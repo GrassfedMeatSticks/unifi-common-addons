@@ -3,17 +3,30 @@
 # Also links any containers from /data/custom/machines to /var/lib/machines.
 # Updates the backup .deb files for offline install.
 
+# Wait up to 45 seconds for an active internet connection. Bypasses instantly if already online, or stops waiting after 15 tries if completely offline.
+count=0
+while [ $count -lt 15 ] && ! ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1; do
+    sleep 3
+    count=$((count + 1))
+done
 set -e
 
-apt-get --fix-broken install -y
-apt-get update -qq
+# The || true keeps these commands from breaking the script unnecessarily
+apt-get --fix-broken install -y || true
+apt-get update -qq || true
 
-# Update the cached .deb files for offline use
-echo "Updating backup dpkg package files..."
-mkdir -p /data/custom/dpkg
-rm -f /data/custom/dpkg/*.deb
-cd /data/custom/dpkg
-apt download systemd-container libnss-mymachines debootstrap arch-test
+# Only wipe/download if the ping actually succeeded (count is less than 15)
+if [ $count -lt 15 ]; then
+    echo "Updating backup dpkg package files..."
+    mkdir -p /data/custom/dpkg
+    rm -f /data/custom/dpkg/*.deb
+    cd /data/custom/dpkg
+    apt download systemd-container libnss-mymachines debootstrap arch-test || true
+else
+    echo "System offline. Preserving existing cached files."
+    mkdir -p /data/custom/dpkg
+    cd /data/custom/dpkg
+fi
 
 # Install systemd-container and dependencies, fall back to cached .deb files if online install fails
 if ! dpkg -l systemd-container 2>/dev/null | grep -q '^ii'; then
